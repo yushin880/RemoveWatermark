@@ -1,0 +1,1254 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>透かし削除</title>
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --panel: #ffffff;
+    --panel-2: #f3f2ee;
+    --line: #e6e3dc;
+    --text: #2d2c2a;
+    --muted: #8b877e;
+    --accent: #4b6a88;
+    --accent-2: #3d5a76;
+    --accent-soft: #e9eef3;
+    --danger: #d9534f;
+    --radius: 10px;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Yu Gothic UI", "Hiragino Sans", "Meiryo", system-ui, sans-serif;
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+  }
+  button, select, input { font: inherit; color: inherit; }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; letter-spacing: .04em; }
+  .brand .logo {
+    width: 30px; height: 30px; border-radius: 9px;
+    background: var(--accent);
+    display: grid; place-items: center;
+  }
+  .brand small { font-weight: 400; color: var(--muted); font-size: 12px; letter-spacing: .02em; margin-left: 6px; }
+  .filename { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .spacer { flex: 1; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 34px; padding: 0 14px;
+    border-radius: 8px; border: 1px solid var(--line);
+    background: var(--panel); cursor: pointer;
+    white-space: nowrap; transition: background .12s, border-color .12s, opacity .12s;
+  }
+  .btn:hover:not(:disabled) { background: var(--panel-2); border-color: #d8d4cb; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn.primary:hover:not(:disabled) { background: var(--accent-2); border-color: var(--accent-2); }
+  .btn.icon { width: 34px; padding: 0; justify-content: center; }
+  .btn svg { width: 18px; height: 18px; flex: none; }
+
+  /* ---------- toolbar ---------- */
+  .toolbar {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 10px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  .sep { width: 1px; height: 24px; background: var(--line); }
+  .seg { display: flex; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 2px; }
+  .seg button {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 30px; padding: 0 12px; border: 0; border-radius: 7px;
+    background: transparent; color: var(--muted); cursor: pointer;
+  }
+  .seg button svg { width: 17px; height: 17px; }
+  .seg button:hover { color: var(--text); }
+  .seg button.active { background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 0 0 1px var(--line); }
+  .seg button kbd { font-size: 10px; color: var(--muted); font-family: inherit; opacity: .8; }
+  .field { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+  .field output { min-width: 34px; color: var(--text); font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 110px; accent-color: var(--accent); }
+  select {
+    height: 34px; padding: 0 10px; border-radius: 8px;
+    background: var(--panel); border: 1px solid var(--line); color: var(--text);
+    max-width: 290px;
+  }
+  .apply { height: 38px; padding: 0 20px; font-size: 15px; }
+  .apply kbd { font-family: inherit; font-size: 11px; opacity: .75; font-weight: 400; }
+  .hidden { display: none !important; }
+
+  /* ---------- stage ---------- */
+  #stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--bg); }
+  #view { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+
+  #drop {
+    position: absolute; inset: 28px;
+    border: 1.5px dashed #d3cfc6; border-radius: 18px;
+    background: var(--panel);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    text-align: center; cursor: pointer; padding: 24px;
+    transition: border-color .15s, background .15s;
+  }
+  #drop:hover, #drop.over { border-color: var(--accent); background: #fbfbf9; }
+  #drop .big { width: 56px; height: 56px; color: var(--accent); }
+  #drop h2 { margin: 0; font-size: 19px; font-weight: 600; }
+  #drop p { margin: 0; color: var(--muted); }
+  .steps { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
+  .step {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px;
+    padding: 6px 14px 6px 6px; font-size: 13px;
+  }
+  .step b {
+    width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--accent); color: #fff; font-size: 12px; font-weight: 600;
+  }
+  .privacy { font-size: 12px !important; margin-top: 6px !important; line-height: 1.7; }
+
+  #busy {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    background: rgba(246,245,242,.6); backdrop-filter: blur(3px);
+  }
+  .busy-card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 22px 26px; width: min(360px, calc(100% - 32px)); text-align: center;
+    box-shadow: 0 16px 40px rgba(60,50,30,.12);
+  }
+  .spinner {
+    width: 32px; height: 32px; margin: 0 auto 12px; border-radius: 50%;
+    border: 3px solid #e6e3dc; border-top-color: var(--accent);
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .bar { height: 6px; background: var(--panel-2); border-radius: 99px; overflow: hidden; margin-top: 12px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+  .busy-sub { color: var(--muted); font-size: 12px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+
+  /* ---------- status ---------- */
+  footer {
+    display: flex; align-items: center; gap: 12px;
+    padding: 6px 20px; background: var(--panel); border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 12px; min-height: 42px;
+  }
+  #hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .zoom { display: flex; align-items: center; gap: 4px; }
+  .zoom .btn { height: 28px; padding: 0 10px; }
+  .zoom .btn.icon { width: 28px; padding: 0; }
+  #zoomLabel { min-width: 48px; text-align: center; color: var(--text); font-variant-numeric: tabular-nums; }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 62px; transform: translateX(-50%) translateY(16px);
+    background: var(--panel); border: 1px solid var(--line); padding: 10px 18px; border-radius: 10px;
+    opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 10;
+    box-shadow: 0 10px 30px rgba(60,50,30,.12); max-width: calc(100% - 32px);
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  @media (max-width: 760px) {
+    header, .toolbar, footer { padding-left: 12px; padding-right: 12px; }
+    .brand small, .seg button span, .seg button kbd, .hide-sm { display: none; }
+    .apply { flex: 1; justify-content: center; }
+    select { max-width: 200px; }
+    #drop { inset: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
+    </div>
+    <div>透かし削除<small>囲って、消して、PNGで保存</small></div>
+  </div>
+  <div class="filename" id="filename"></div>
+  <div class="spacer"></div>
+  <button class="btn" id="openBtn" title="画像を開く (Ctrl+O)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+    <span class="hide-sm">画像を開く</span>
+  </button>
+  <button class="btn primary" id="downloadBtn" disabled title="PNGでダウンロード (Ctrl+S)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+    PNGで保存
+  </button>
+  <input type="file" id="fileInput" accept="image/*" hidden>
+</header>
+
+<div class="toolbar">
+  <div class="seg" id="tools">
+    <button data-tool="rect" class="active" title="矩形選択 (R)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="3 3"><rect x="4" y="5" width="16" height="14" rx="1"/></svg>
+      <span>矩形</span><kbd>R</kbd>
+    </button>
+    <button data-tool="brush" title="ブラシ (B)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L12 15l-3-3z"/><path d="M9 12c-2 0-4 1.5-4 4 0 1.5-1 3-3 3 1.5 1.5 3.5 2 5 2 3 0 5-2 5-4.5"/></svg>
+      <span>ブラシ</span><kbd>B</kbd>
+    </button>
+    <button data-tool="eraser" title="選択を消す (E)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 21l-4.3-4.3a1.5 1.5 0 0 1 0-2.1L13.6 3.7a1.5 1.5 0 0 1 2.1 0l4.6 4.6a1.5 1.5 0 0 1 0 2.1L11 21"/><path d="M22 21H7M5 12l7 7"/></svg>
+      <span>選択消し</span><kbd>E</kbd>
+    </button>
+    <button data-tool="hand" title="移動 (H / Spaceを押しながらドラッグ)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 0 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/></svg>
+      <span>移動</span><kbd>H</kbd>
+    </button>
+  </div>
+
+  <label class="field hidden" id="brushField" title="ブラシの大きさ（画面上のピクセル）">
+    ブラシ径
+    <input type="range" id="brushSize" min="4" max="200" value="36">
+    <output id="brushOut">36</output>
+  </label>
+
+  <div class="sep hide-sm"></div>
+
+  <button class="btn" id="clearBtn" disabled title="選択をすべて解除 (Esc)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    <span class="hide-sm">選択解除</span>
+  </button>
+
+  <div class="spacer"></div>
+
+  <button class="btn primary apply" id="applyBtn" disabled title="選択した部分を消す (Enter)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
+    適用 <kbd>Enter</kbd>
+  </button>
+</div>
+
+<div id="stage">
+  <canvas id="view"></canvas>
+
+  <div id="drop">
+    <svg class="big" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>
+    <h2>画像をドロップ、またはクリックして選択</h2>
+    <p>Ctrl+V で貼り付けもOK ・ PNG / JPG / WebP など</p>
+    <div class="steps">
+      <div class="step"><b>1</b>画像をアップロード</div>
+      <div class="step"><b>2</b>透かしをドラッグで囲う</div>
+      <div class="step"><b>3</b>「適用」を押す</div>
+      <div class="step"><b>4</b>PNGで保存</div>
+    </div>
+    <p class="privacy">選んだ部分の周りの画像を、ネット上の無料AI（Hugging Face で公開されているモデル）に送って処理します。<br>混雑時は時間がかかったり、別のモデルに自動で切り替わったりします。</p>
+  </div>
+
+  <div id="busy" class="hidden">
+    <div class="busy-card">
+      <div class="spinner"></div>
+      <div id="busyTitle">AIが背景を描き直しています…</div>
+      <div class="bar"><i id="barFill"></i></div>
+      <div class="busy-sub" id="busySub">準備中</div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div id="hint">画像を読み込んでください</div>
+  <div class="spacer"></div>
+  <div id="sizeLabel" class="hide-sm"></div>
+  <div class="zoom">
+    <button class="btn icon" id="zoomOut" title="縮小 (-)">−</button>
+    <span id="zoomLabel">–</span>
+    <button class="btn icon" id="zoomIn" title="拡大 (+)">+</button>
+    <button class="btn" id="fitBtn" title="全体を表示 (0)">全体</button>
+  </div>
+</footer>
+
+<div id="toast"></div>
+
+<script>
+/* =====================================================================
+ *  UI
+ * ===================================================================== */
+const $ = (s) => document.querySelector(s);
+const stage = $('#stage'), view = $('#view'), vctx = view.getContext('2d');
+const MASK_COLOR = '#e5484d';
+
+let imgCanvas = null, imgCtx = null, maskCanvas = null, maskCtx = null, origCanvas = null;
+let W = 0, H = 0, fileBase = 'image';
+let scale = 1, offX = 0, offY = 0, dpr = 1;
+let tool = 'rect';
+let brushSize = 36;
+let undoStack = [], redoStack = [];
+let busy = false, comparing = false, hasMask = false;
+let drag = null, spaceDown = false;
+let pointer = { x: 0, y: 0, inside: false };
+let checker = null;
+
+const hints = {
+  rect: 'ドラッグで透かしを囲む（何個でも追加OK・Altを押しながらで選択を削る）→「適用」で消去',
+  brush: '塗った部分が消去対象になります → 「適用」で消去 ・ [ ] でブラシ径を変更',
+  eraser: '塗った部分を選択から外します',
+  hand: 'ドラッグで画像を移動 ・ ホイールで拡大縮小'
+};
+
+/* ---------- helpers ---------- */
+function toast(msg, ms = 2200) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), ms);
+}
+let raf = 0;
+function requestRender() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); }); }
+function toImage(sx, sy) { return { x: (sx - offX) / scale, y: (sy - offY) / scale }; }
+function toScreen(ix, iy) { return { x: ix * scale + offX, y: iy * scale + offY }; }
+function localPos(e) { const r = view.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+function make2d(w, h) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  return [c, c.getContext('2d', { willReadFrequently: true })];
+}
+
+function makeChecker() {
+  const [c, x] = make2d(16, 16);
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, 16, 16);
+  x.fillStyle = '#ecebe7'; x.fillRect(0, 0, 8, 8); x.fillRect(8, 8, 8, 8);
+  return vctx.createPattern(c, 'repeat');
+}
+
+/* ---------- layout & render ---------- */
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  const r = stage.getBoundingClientRect();
+  view.width = Math.max(1, Math.round(r.width * dpr));
+  view.height = Math.max(1, Math.round(r.height * dpr));
+  render();
+}
+new ResizeObserver(resize).observe(stage);
+
+function fit() {
+  if (!imgCanvas) return;
+  const r = stage.getBoundingClientRect();
+  const pad = r.width < 600 ? 12 : 32;
+  scale = Math.min((r.width - pad * 2) / W, (r.height - pad * 2) / H, 4);
+  if (!(scale > 0)) scale = 1;
+  offX = (r.width - W * scale) / 2;
+  offY = (r.height - H * scale) / 2;
+  updateStatus(); requestRender();
+}
+
+function zoomAt(sx, sy, ns) {
+  ns = Math.min(32, Math.max(0.02, ns));
+  const p = toImage(sx, sy);
+  scale = ns; offX = sx - p.x * scale; offY = sy - p.y * scale;
+  updateStatus(); requestRender();
+}
+function zoomBy(f) { const r = stage.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, scale * f); }
+
+function render() {
+  vctx.setTransform(1, 0, 0, 1, 0, 0);
+  vctx.clearRect(0, 0, view.width, view.height);
+  if (!imgCanvas) return;
+  if (!checker) checker = makeChecker();
+
+  // checkerboard (screen space) behind the image
+  vctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  vctx.fillStyle = checker;
+  vctx.fillRect(offX, offY, W * scale, H * scale);
+
+  // image + mask (image space)
+  vctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
+  vctx.imageSmoothingEnabled = scale < 3;
+  vctx.imageSmoothingQuality = 'high';
+  vctx.drawImage(comparing ? origCanvas : imgCanvas, 0, 0);
+  if (!comparing && hasMask) {
+    vctx.globalAlpha = 0.5;
+    vctx.drawImage(maskCanvas, 0, 0);
+    vctx.globalAlpha = 1;
+  }
+
+  // overlays (screen space)
+  vctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  vctx.strokeStyle = 'rgba(0,0,0,.10)'; vctx.lineWidth = 1;
+  vctx.strokeRect(offX - .5, offY - .5, W * scale + 1, H * scale + 1);
+
+  if (drag && drag.type === 'rect') {
+    const a = toScreen(Math.min(drag.x0, drag.x1), Math.min(drag.y0, drag.y1));
+    const b = toScreen(Math.max(drag.x0, drag.x1), Math.max(drag.y0, drag.y1));
+    vctx.fillStyle = drag.sub ? 'rgba(255,255,255,.12)' : 'rgba(255,59,92,.25)';
+    vctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+    antsRect(a.x, a.y, b.x - a.x, b.y - a.y);
+    const iw = Math.round(Math.abs(drag.x1 - drag.x0)), ih = Math.round(Math.abs(drag.y1 - drag.y0));
+    label(`${iw} × ${ih}`, b.x + 8, b.y + 8);
+  }
+  if (drag && drag.type === 'lasso' && drag.pts.length > 1) {
+    vctx.beginPath();
+    drag.pts.forEach((p, i) => { const s = toScreen(p.x, p.y); i ? vctx.lineTo(s.x, s.y) : vctx.moveTo(s.x, s.y); });
+    vctx.closePath();
+    vctx.fillStyle = drag.sub ? 'rgba(255,255,255,.12)' : 'rgba(255,59,92,.25)';
+    vctx.fill();
+    antsPath();
+  }
+  if ((tool === 'brush' || tool === 'eraser') && pointer.inside && !spaceDown && !(drag && drag.type === 'pan') && !busy) {
+    vctx.beginPath();
+    vctx.arc(pointer.x, pointer.y, brushSize / 2, 0, Math.PI * 2);
+    vctx.strokeStyle = 'rgba(0,0,0,.7)'; vctx.lineWidth = 3; vctx.stroke();
+    vctx.strokeStyle = tool === 'eraser' ? '#fff' : MASK_COLOR; vctx.lineWidth = 1.5; vctx.stroke();
+  }
+}
+function antsRect(x, y, w, h) {
+  vctx.lineWidth = 1;
+  vctx.setLineDash([5, 4]);
+  vctx.strokeStyle = '#000'; vctx.lineDashOffset = 0; vctx.strokeRect(x + .5, y + .5, w, h);
+  vctx.strokeStyle = '#fff'; vctx.lineDashOffset = 4.5; vctx.strokeRect(x + .5, y + .5, w, h);
+  vctx.setLineDash([]);
+}
+function antsPath() {
+  vctx.lineWidth = 1;
+  vctx.setLineDash([5, 4]);
+  vctx.strokeStyle = '#000'; vctx.lineDashOffset = 0; vctx.stroke();
+  vctx.strokeStyle = '#fff'; vctx.lineDashOffset = 4.5; vctx.stroke();
+  vctx.setLineDash([]);
+}
+function label(text, x, y) {
+  vctx.font = '12px "Segoe UI", sans-serif';
+  const w = vctx.measureText(text).width + 12;
+  vctx.fillStyle = 'rgba(0,0,0,.75)';
+  vctx.fillRect(x, y, w, 20);
+  vctx.fillStyle = '#fff'; vctx.fillText(text, x + 6, y + 14);
+}
+
+function updateStatus() {
+  $('#zoomLabel').textContent = imgCanvas ? Math.round(scale * 100) + '%' : '–';
+  $('#sizeLabel').textContent = imgCanvas ? `${W} × ${H} px` : '';
+}
+function updateUI() {
+  const has = !!imgCanvas;
+  $('#applyBtn').disabled = !has || !hasMask || busy;
+  $('#clearBtn').disabled = !has || !hasMask || busy;
+  $('#downloadBtn').disabled = !has || busy;
+  $('#hint').textContent = has ? hints[tool] : '画像を読み込んでください';
+  updateCursor();
+}
+function updateCursor() {
+  let c = 'default';
+  if (imgCanvas) {
+    if (drag && drag.type === 'pan') c = 'grabbing';
+    else if (spaceDown || tool === 'hand') c = 'grab';
+    else if (tool === 'brush' || tool === 'eraser') c = 'none';
+    else c = 'crosshair';
+  }
+  view.style.cursor = c;
+}
+
+/* ---------- tools ---------- */
+function setTool(t) {
+  tool = t;
+  document.querySelectorAll('#tools button').forEach(b => b.classList.toggle('active', b.dataset.tool === t));
+  $('#brushField').classList.toggle('hidden', !(t === 'brush' || t === 'eraser'));
+  updateUI(); requestRender();
+}
+document.querySelectorAll('#tools button').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
+
+$('#brushSize').addEventListener('input', e => { brushSize = +e.target.value; $('#brushOut').textContent = brushSize; requestRender(); });
+
+/* ---------- load ---------- */
+function loadFile(file) {
+  if (!file || !/^image\//.test(file.type)) { toast('画像ファイルを選んでください'); return; }
+  fileBase = (file.name || 'image').replace(/\.[^.]+$/, '') || 'image';
+  const url = URL.createObjectURL(file);
+  const im = new Image();
+  im.onload = () => { setupImage(im); URL.revokeObjectURL(url); $('#filename').textContent = file.name || '貼り付けた画像'; };
+  im.onerror = () => { URL.revokeObjectURL(url); toast('この画像は読み込めませんでした'); };
+  im.src = url;
+}
+function setupImage(im) {
+  W = im.naturalWidth; H = im.naturalHeight;
+  [imgCanvas, imgCtx] = make2d(W, H);
+  imgCtx.drawImage(im, 0, 0);
+  [origCanvas] = make2d(W, H);
+  origCanvas.getContext('2d').drawImage(im, 0, 0);
+  [maskCanvas, maskCtx] = make2d(W, H);
+  undoStack = []; redoStack = []; hasMask = false;
+  $('#drop').classList.add('hidden');
+  fit(); updateUI();
+  toast('透かしの部分をドラッグで囲んでください');
+}
+
+$('#openBtn').addEventListener('click', () => $('#fileInput').click());
+$('#drop').addEventListener('click', () => $('#fileInput').click());
+$('#fileInput').addEventListener('change', e => { loadFile(e.target.files[0]); e.target.value = ''; });
+
+['dragenter', 'dragover'].forEach(ev => window.addEventListener(ev, e => {
+  e.preventDefault(); if (!busy) $('#drop').classList.add('over');
+}));
+['dragleave', 'drop'].forEach(ev => window.addEventListener(ev, e => {
+  e.preventDefault(); $('#drop').classList.remove('over');
+}));
+window.addEventListener('drop', e => {
+  if (busy) return;
+  const f = [...(e.dataTransfer?.files || [])].find(f => /^image\//.test(f.type));
+  if (f) loadFile(f);
+});
+window.addEventListener('paste', e => {
+  if (busy) return;
+  const item = [...(e.clipboardData?.items || [])].find(i => /^image\//.test(i.type));
+  if (item) { const f = item.getAsFile(); if (f) loadFile(f); }
+});
+
+/* ---------- mask editing ---------- */
+function maskOp(sub, fn) {
+  maskCtx.save();
+  maskCtx.globalCompositeOperation = sub ? 'destination-out' : 'source-over';
+  maskCtx.fillStyle = maskCtx.strokeStyle = MASK_COLOR;
+  fn(maskCtx);
+  maskCtx.restore();
+}
+function stamp(a, b, sub) {
+  maskOp(sub, c => {
+    c.lineWidth = brushSize / scale; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x + 0.01, b.y); c.stroke();
+  });
+  if (!sub) hasMask = true;
+}
+function maskBBox() {
+  const d = maskCtx.getImageData(0, 0, W, H).data;
+  let x0 = W, y0 = H, x1 = -1, y1 = -1;
+  for (let y = 0; y < H; y++) {
+    const row = y * W;
+    for (let x = 0; x < W; x++) {
+      if (d[(row + x) * 4 + 3] > 16) {
+        if (x < x0) x0 = x; if (x > x1) x1 = x;
+        if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+    }
+  }
+  return x1 < 0 ? null : { x0, y0, x1, y1, data: d };
+}
+function refreshHasMask() { hasMask = !!maskBBox(); updateUI(); requestRender(); }
+function clearMask() { if (!maskCtx) return; maskCtx.clearRect(0, 0, W, H); hasMask = false; updateUI(); requestRender(); }
+
+view.addEventListener('pointerdown', e => {
+  if (!imgCanvas || busy) return;
+  const s = localPos(e), p = toImage(s.x, s.y);
+  view.setPointerCapture(e.pointerId);
+  if (e.button === 1 || tool === 'hand' || spaceDown) {
+    drag = { type: 'pan', sx: s.x, sy: s.y, ox: offX, oy: offY };
+    e.preventDefault(); updateCursor(); return;
+  }
+  if (e.button !== 0) return;
+  if (tool === 'rect') drag = { type: 'rect', x0: p.x, y0: p.y, x1: p.x, y1: p.y, sub: e.altKey };
+  else if (tool === 'lasso') drag = { type: 'lasso', pts: [p], sub: e.altKey, last: s };
+  else if (tool === 'brush' || tool === 'eraser') {
+    const sub = tool === 'eraser' || e.altKey;
+    drag = { type: 'brush', last: p, sub };
+    stamp(p, p, sub);
+  }
+  requestRender();
+});
+view.addEventListener('pointermove', e => {
+  const s = localPos(e);
+  pointer.x = s.x; pointer.y = s.y; pointer.inside = true;
+  if (drag) {
+    const p = toImage(s.x, s.y);
+    if (drag.type === 'pan') { offX = drag.ox + (s.x - drag.sx); offY = drag.oy + (s.y - drag.sy); }
+    else if (drag.type === 'rect') {
+      drag.x1 = Math.max(0, Math.min(W, p.x)); drag.y1 = Math.max(0, Math.min(H, p.y));
+      drag.x0 = Math.max(0, Math.min(W, drag.x0)); drag.y0 = Math.max(0, Math.min(H, drag.y0));
+    }
+    else if (drag.type === 'lasso') {
+      if (Math.hypot(s.x - drag.last.x, s.y - drag.last.y) > 2) { drag.pts.push(p); drag.last = s; }
+    }
+    else if (drag.type === 'brush') { stamp(drag.last, p, drag.sub); drag.last = p; }
+  }
+  requestRender();
+});
+view.addEventListener('pointerleave', () => { pointer.inside = false; requestRender(); });
+function endDrag() {
+  if (!drag) return;
+  const d = drag; drag = null;
+  if (d.type === 'rect') {
+    const x0 = Math.floor(Math.min(d.x0, d.x1)), y0 = Math.floor(Math.min(d.y0, d.y1));
+    const x1 = Math.ceil(Math.max(d.x0, d.x1)), y1 = Math.ceil(Math.max(d.y0, d.y1));
+    if (x1 - x0 >= 1 && y1 - y0 >= 1 && (x1 - x0) * scale >= 3 && (y1 - y0) * scale >= 3) {
+      maskOp(d.sub, c => c.fillRect(x0, y0, x1 - x0, y1 - y0));
+      if (d.sub) refreshHasMask(); else hasMask = true;
+    }
+  } else if (d.type === 'lasso' && d.pts.length >= 3) {
+    maskOp(d.sub, c => {
+      c.beginPath(); d.pts.forEach((p, i) => i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y));
+      c.closePath(); c.fill();
+    });
+    if (d.sub) refreshHasMask(); else hasMask = true;
+  } else if (d.type === 'brush' && d.sub) {
+    refreshHasMask();
+  }
+  updateUI(); requestRender();
+}
+view.addEventListener('pointerup', endDrag);
+view.addEventListener('pointercancel', endDrag);
+view.addEventListener('contextmenu', e => e.preventDefault());
+view.addEventListener('wheel', e => {
+  if (!imgCanvas) return;
+  e.preventDefault();
+  const s = localPos(e);
+  const dy = e.deltaMode === 1 ? e.deltaY * 30 : e.deltaY;
+  zoomAt(s.x, s.y, scale * Math.exp(-dy * 0.0015));
+}, { passive: false });
+
+/* ---------- apply ---------- */
+function setBusy(b) {
+  busy = b;
+  $('#busy').classList.toggle('hidden', !b);
+  if (b) { $('#barFill').style.width = '0%'; $('#busySub').textContent = '準備中'; }
+  updateUI();
+}
+function busyProgress(p, msg) {
+  $('#barFill').style.width = (Math.max(0, Math.min(1, p)) * 100).toFixed(1) + '%';
+  $('#busySub').textContent = `${Math.round(p * 100)}% ・ ${msg || ''}`;
+}
+
+async function apply() {
+  if (busy || !imgCanvas) return;
+  const bb = maskBBox();
+  if (!bb) { hasMask = false; updateUI(); toast('先に消したい透かしを囲んでください'); return; }
+  setBusy(true);
+  const t0 = performance.now();
+  try {
+    const used = await applyAI(bb);
+    maskCtx.clearRect(0, 0, W, H); hasMask = false;
+    toast(`消去しました（${used}・${((performance.now() - t0) / 1000).toFixed(1)}秒）`);
+  } catch (err) {
+    console.error(err);
+    toast('処理に失敗しました: ' + (err && err.message || err) + '　少し待ってもう一度「適用」を押してください', 6000);
+  } finally {
+    setBusy(false); requestRender();
+  }
+}
+
+function pushUndo(x, y, before, after) {
+  undoStack.push({ x, y, before, after });
+  if (undoStack.length > 30) undoStack.shift();
+  redoStack = [];
+}
+
+/* =====================================================================
+ *  Free online AI models (Hugging Face Spaces)
+ *  Only the area around the selection is sent.
+ * ===================================================================== */
+const HOSTS = {
+  bria: 'https://briaai-bria-eraser-api.hf.space'
+};
+
+// BRIA Eraser: made for erasing, no usage limit.
+const MODEL = { name: 'BRIA Eraser', maxSide: 2048, run: briaErase };
+
+// An earlier version cached a ~200MB model in the browser; free that space.
+try { indexedDB.deleteDatabase('watermark-remover'); } catch (_) { }
+
+function canvasToBlob(cv) {
+  return new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('画像の変換に失敗しました')), 'image/png'));
+}
+async function fetchOK(url, opts, what) {
+  let r;
+  try { r = await fetch(url, opts); } catch (e) { throw new Error(`${what}に接続できません（ネット接続を確認してください）`); }
+  if (!r.ok) throw new Error(`${what}がエラーを返しました (${r.status})`);
+  return r;
+}
+
+/* ---------- Gradio API helpers ---------- */
+const GF = p => ({ path: p, meta: { _type: 'gradio.FileData' } });
+async function gradioUpload(host, files, what) {
+  const fd = new FormData();
+  for (const [blob, name] of files) fd.append('files', blob, name);
+  return (await fetchOK(host + '/gradio_api/upload', { method: 'POST', body: fd }, what)).json();
+}
+async function gradioRun(host, api, data, what) {
+  const call = await (await fetchOK(host + '/gradio_api/call' + api, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data })
+  }, what)).json();
+  if (!call.event_id) throw new Error(what + 'の応答が不正です');
+  const text = await (await fetchOK(host + '/gradio_api/call' + api + '/' + call.event_id, {}, what)).text();
+  let done = null, err = null;
+  const re = /event: (\w+)\s*\ndata: (.*)/g;
+  let m;
+  while ((m = re.exec(text))) {
+    if (m[1] === 'complete') done = m[2];
+    if (m[1] === 'error') err = m[2];
+  }
+  if (done) return JSON.parse(done);
+  let detail = '';
+  try { const e = JSON.parse(err); detail = typeof e === 'string' ? e : (e && (e.error || e.message)) || ''; } catch (_) { detail = err && err !== 'null' ? err : ''; }
+  if (/quota|GPU|ZeroGPU|exceeded/i.test(detail)) throw new Error(`${what}の無料利用枠の上限に達しました`);
+  throw new Error(`${what}で処理に失敗しました${detail ? '：' + String(detail).slice(0, 160) : '（混雑している可能性があります）'}`);
+}
+function findFiles(x, out = []) {
+  if (x && typeof x === 'object') {
+    if (typeof x.path === 'string' && ('meta' in x || 'url' in x || 'orig_name' in x)) out.push(x);
+    else for (const v of Object.values(x)) findFiles(v, out);
+  }
+  return out;
+}
+async function gradioImage(host, fd, what) {
+  const url = fd.path ? host + '/gradio_api/file=' + fd.path : fd.url;
+  return createImageBitmap(await (await fetchOK(url, {}, what)).blob());
+}
+function editorValue(bgPath, maskPath) {
+  return { background: GF(bgPath), layers: [GF(maskPath)], composite: null, id: null };
+}
+
+/* ---------- each model ----------
+ * img: canvas to edit, mask: canvas (white opaque = erase, transparent black = keep),
+ * box: {x0,y0,x1,y1} of the erase area in img pixels. Returns an ImageBitmap. */
+async function briaErase(img, mask, box, onp) {
+  const what = 'BRIA Eraser', H = HOSTS.bria;
+  onp(0.15, '画像を送信中');
+  const up = await gradioUpload(H, [[await canvasToBlob(img), 'image.png'], [await canvasToBlob(mask), 'mask.png']], what);
+  onp(0.35, `AIが消去中（${what}）`);
+  const out = await gradioRun(H, '/run', [editorValue(up[0], up[1])], what);
+  onp(0.85, '結果を受信中');
+  return gradioImage(H, findFiles(out)[0], what);
+}
+
+// Seamless correction: harmonic interpolation of the colour difference along the
+// hole border, so the filled area joins the surrounding pixels without a visible edge.
+function harmonicCorrect(rgba, out, hole, w, h) {
+  const n = w * h, corr = new Float32Array(n * 3);
+  const list = [];
+  let s0 = 0, s1 = 0, s2 = 0, cnt = 0;
+  const isBorder = new Uint8Array(n);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (hole[i]) { list.push(i); continue; }
+    if ((x > 0 && hole[i - 1]) || (x < w - 1 && hole[i + 1]) || (y > 0 && hole[i - w]) || (y < h - 1 && hole[i + w])) {
+      isBorder[i] = 1;
+      for (let c = 0; c < 3; c++) {
+        let d = rgba[i * 4 + c] - out[i * 3 + c];
+        d = Math.max(-40, Math.min(40, d));
+        corr[i * 3 + c] = d;
+      }
+      s0 += corr[i * 3]; s1 += corr[i * 3 + 1]; s2 += corr[i * 3 + 2]; cnt++;
+    }
+  }
+  if (!cnt || !list.length) return corr;
+  const sm = new Float32Array(corr);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x; if (!isBorder[i]) continue;
+    let a = 0, b = 0, c = 0, k = 0;
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+      const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+      const j = yy * w + xx; if (!isBorder[j]) continue;
+      a += corr[j * 3]; b += corr[j * 3 + 1]; c += corr[j * 3 + 2]; k++;
+    }
+    sm[i * 3] = a / k; sm[i * 3 + 1] = b / k; sm[i * 3 + 2] = c / k;
+  }
+  corr.set(sm);
+  const m0 = s0 / cnt, m1 = s1 / cnt, m2 = s2 / cnt;
+  for (const i of list) { corr[i * 3] = m0; corr[i * 3 + 1] = m1; corr[i * 3 + 2] = m2; }
+  const omega = 1.9, iters = 250;
+  for (let it = 0; it < iters; it++) {
+    for (let k = 0; k < list.length; k++) {
+      const i = list[k], x = i % w, y = (i / w) | 0;
+      let a = 0, b = 0, c = 0, nn = 0;
+      if (x > 0) { const j = (i - 1) * 3; a += corr[j]; b += corr[j + 1]; c += corr[j + 2]; nn++; }
+      if (x < w - 1) { const j = (i + 1) * 3; a += corr[j]; b += corr[j + 1]; c += corr[j + 2]; nn++; }
+      if (y > 0) { const j = (i - w) * 3; a += corr[j]; b += corr[j + 1]; c += corr[j + 2]; nn++; }
+      if (y < h - 1) { const j = (i + w) * 3; a += corr[j]; b += corr[j + 1]; c += corr[j + 2]; nn++; }
+      const o = i * 3;
+      corr[o] += omega * (a / nn - corr[o]);
+      corr[o + 1] += omega * (b / nn - corr[o + 1]);
+      corr[o + 2] += omega * (c / nn - corr[o + 2]);
+    }
+  }
+  return corr;
+}
+
+function chamferDist(seed, w, h) {
+  const n = w * h, d = new Float32Array(n), INF = 1e9, D = Math.SQRT2;
+  for (let i = 0; i < n; i++) d[i] = seed[i] ? 0 : INF;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x; let v = d[i];
+    if (x > 0 && d[i - 1] + 1 < v) v = d[i - 1] + 1;
+    if (y > 0) {
+      if (d[i - w] + 1 < v) v = d[i - w] + 1;
+      if (x > 0 && d[i - w - 1] + D < v) v = d[i - w - 1] + D;
+      if (x < w - 1 && d[i - w + 1] + D < v) v = d[i - w + 1] + D;
+    }
+    d[i] = v;
+  }
+  for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) {
+    const i = y * w + x; let v = d[i];
+    if (x < w - 1 && d[i + 1] + 1 < v) v = d[i + 1] + 1;
+    if (y < h - 1) {
+      if (d[i + w] + 1 < v) v = d[i + w] + 1;
+      if (x < w - 1 && d[i + w + 1] + D < v) v = d[i + w + 1] + D;
+      if (x > 0 && d[i + w - 1] + D < v) v = d[i + w - 1] + D;
+    }
+    d[i] = v;
+  }
+  return d;
+}
+
+// Connected groups of masked pixels (nearby pieces merged), as bounding boxes.
+function findGroups(mask, rx0, ry0, rx1, ry1) {
+  const g = 4, gw = Math.ceil((rx1 - rx0 + 1) / g), gh = Math.ceil((ry1 - ry0 + 1) / g);
+  const cells = new Uint8Array(gw * gh);
+  for (let y = ry0; y <= ry1; y++) for (let x = rx0; x <= rx1; x++)
+    if (mask[y * W + x]) cells[((y - ry0) / g | 0) * gw + ((x - rx0) / g | 0)] = 1;
+  const seen = new Uint8Array(gw * gh), boxes = [];
+  for (let s = 0; s < gw * gh; s++) {
+    if (!cells[s] || seen[s]) continue;
+    let bx0 = 1e9, by0 = 1e9, bx1 = -1, by1 = -1;
+    const stack = [s]; seen[s] = 1;
+    while (stack.length) {
+      const c = stack.pop(), cx = c % gw, cy = (c / gw) | 0;
+      if (cx < bx0) bx0 = cx; if (cx > bx1) bx1 = cx; if (cy < by0) by0 = cy; if (cy > by1) by1 = cy;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= gw || ny >= gh) continue;
+        const j = ny * gw + nx;
+        if (cells[j] && !seen[j]) { seen[j] = 1; stack.push(j); }
+      }
+    }
+    boxes.push({
+      x0: rx0 + bx0 * g, y0: ry0 + by0 * g,
+      x1: Math.min(rx1, rx0 + (bx1 + 1) * g - 1), y1: Math.min(ry1, ry0 + (by1 + 1) * g - 1)
+    });
+  }
+  const pad = 96;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    outer: for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], b = boxes[j];
+      if (a.x0 - pad <= b.x1 && b.x0 - pad <= a.x1 && a.y0 - pad <= b.y1 && b.y0 - pad <= a.y1) {
+        boxes[i] = { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) };
+        boxes.splice(j, 1); changed = true; break outer;
+      }
+    }
+  }
+  return boxes;
+}
+
+/* The area to erase, decided automatically from the selection:
+ *  1. learn what the watermark looks like from inside the selection —
+ *     as a see-through overlay (pixel = background·(1−a) + colour·a), and by its colours
+ *  2. starting from the selection, follow pixels that look like that watermark,
+ *     jumping the gaps between letters, so nearby parts that weren't selected are found too
+ *  3. widen a little so soft edges, shadows and glow go as well */
+function autoMask(bb) {
+  const big = Math.max(W, H);
+  const base = Math.max(3, Math.min(8, Math.round(big / 300)));
+  const cap = Math.max(48, Math.round(big * 0.25));
+  const pre = cap + 96;
+  const qx0 = Math.max(0, bb.x0 - pre), qy0 = Math.max(0, bb.y0 - pre);
+  const qx1 = Math.min(W - 1, bb.x1 + pre), qy1 = Math.min(H - 1, bb.y1 + pre);
+  const qw = qx1 - qx0 + 1, qh = qy1 - qy0 + 1, n = qw * qh;
+
+  const seed = new Uint8Array(n), outside = new Uint8Array(n);
+  for (let y = 0; y < qh; y++) for (let x = 0; x < qw; x++) {
+    const i = y * qw + x;
+    if (bb.data[((y + qy0) * W + x + qx0) * 4 + 3] > 16) seed[i] = 1; else outside[i] = 1;
+  }
+  const din = chamferDist(outside, qw, qh);
+  let half = 0;
+  for (let i = 0; i < n; i++) if (seed[i] && din[i] > half) half = din[i];
+  half = Math.max(2, half);
+  const dout = chamferDist(seed, qw, qh);
+  const Rmax = Math.min(cap, Math.round(half * 12) + 32);
+  const px = imgCtx.getImageData(qx0, qy0, qw, qh).data;
+
+  // ---- local background: median on a reduced grid (keeps edges between areas sharp) ----
+  const s = Math.max(1, Math.round(half / 5)), K = 3;
+  const gw = Math.ceil(qw / s), gh = Math.ceil(qh / s);
+  const avg = new Uint8Array(gw * gh * 3), need = new Uint8Array(gw * gh);
+  for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
+    let r = 0, g = 0, b = 0, k = 0, near = false;
+    for (let y = gy * s; y < Math.min(qh, gy * s + s); y++) for (let x = gx * s; x < Math.min(qw, gx * s + s); x++) {
+      const i = y * qw + x, o = i * 4;
+      r += px[o]; g += px[o + 1]; b += px[o + 2]; k++;
+      if (dout[i] <= Rmax + (K + 2) * s) near = true;
+    }
+    const c = (gy * gw + gx) * 3;
+    avg[c] = r / k; avg[c + 1] = g / k; avg[c + 2] = b / k;
+    need[gy * gw + gx] = near ? 1 : 0;
+  }
+  const med = new Float32Array(gw * gh * 3), win = new Uint8Array((2 * K + 1) ** 2);
+  for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
+    if (!need[gy * gw + gx]) continue;
+    for (let ch = 0; ch < 3; ch++) {
+      let m = 0;
+      for (let y = Math.max(0, gy - K); y <= Math.min(gh - 1, gy + K); y++)
+        for (let x = Math.max(0, gx - K); x <= Math.min(gw - 1, gx + K); x++) {
+          const v = avg[(y * gw + x) * 3 + ch];
+          let j = m++; while (j > 0 && win[j - 1] > v) { win[j] = win[j - 1]; j--; } win[j] = v;
+        }
+      med[(gy * gw + gx) * 3 + ch] = win[m >> 1];
+    }
+  }
+  const bgAt = (i, out) => { // bilinear between grid cell centres
+    const x = i % qw, y = (i / qw) | 0;
+    const fx = Math.min(gw - 1, Math.max(0, (x + 0.5) / s - 0.5)), fy = Math.min(gh - 1, Math.max(0, (y + 0.5) / s - 0.5));
+    const x0 = fx | 0, y0 = fy | 0, x1 = Math.min(gw - 1, x0 + 1), y1 = Math.min(gh - 1, y0 + 1), ax = fx - x0, ay = fy - y0;
+    for (let c = 0; c < 3; c++) {
+      const a = med[(y0 * gw + x0) * 3 + c], b = med[(y0 * gw + x1) * 3 + c];
+      const d = med[(y1 * gw + x0) * 3 + c], e = med[(y1 * gw + x1) * 3 + c];
+      out[c] = (a + (b - a) * ax) * (1 - ay) + (d + (e - d) * ax) * ay;
+    }
+  };
+
+  // ---- how far pixels stray from their background (noise level from the surroundings) ----
+  const B = [0, 0, 0];
+  const devOf = i => { bgAt(i, B); const o = i * 4; return Math.hypot(px[o] - B[0], px[o + 1] - B[1], px[o + 2] - B[2]); };
+  const ringDev = [];
+  for (let i = 0; i < n; i += 7) if (!seed[i] && dout[i] > 2 && dout[i] <= Rmax) ringDev.push(devOf(i));
+  ringDev.sort((a, b) => a - b);
+  const thr = Math.max(12, 3 * (ringDev[ringDev.length >> 1] || 4));
+
+  // ---- learn the overlay (colour + strength) from the watermark inside the selection ----
+  const samp = [];
+  const stride = Math.max(1, Math.round(Math.sqrt(n / 60000)));
+  for (let y = 0; y < qh; y += stride) for (let x = 0; x < qw; x += stride) {
+    const i = y * qw + x;
+    if (!seed[i] || devOf(i) <= thr) continue;
+    const o = i * 4;
+    samp.push([px[o], px[o + 1], px[o + 2], B[0], B[1], B[2], x, y]);
+  }
+  const fit = (c, p) => { // → [alpha, residual 0..1]
+    const v0 = c[0] - p[3], v1 = c[1] - p[4], v2 = c[2] - p[5], vv = v0 * v0 + v1 * v1 + v2 * v2;
+    const d0 = p[0] - p[3], d1 = p[1] - p[4], d2 = p[2] - p[5], dd = Math.sqrt(d0 * d0 + d1 * d1 + d2 * d2);
+    if (vv < 100 || dd < 1) return [0, 1];
+    const a = (d0 * v0 + d1 * v1 + d2 * v2) / vv;
+    if (a <= 0.02) return [a, 1];
+    return [a, Math.min(1, Math.hypot(d0 - a * v0, d1 - a * v1, d2 - a * v2) / dd)];
+  };
+  let model = null, textH = 2 * half;
+  if (samp.length >= 30) {
+    // up to two overlay colours (e.g. white letters + their dark shadow)
+    const layers = [], pts = [];
+    let rest = samp;
+    for (let pass = 0; pass < 2 && rest.length >= 30; pass++) {
+      const cands = [];
+      for (let g = 0; g <= 255; g += 15) cands.push([g, g, g]);
+      const m = [0, 0, 0]; for (const p of rest) { m[0] += p[0]; m[1] += p[1]; m[2] += p[2]; }
+      cands.push(m.map(v => v / rest.length));
+      let best = null, bestScore = 1e9;
+      for (const c of cands) {
+        let sc = 0; for (const p of rest) sc += fit(c, p)[1];
+        if (sc < bestScore) { bestScore = sc; best = c; }
+      }
+      const alphas = [], left = [];
+      for (const p of rest) {
+        const [a, r] = fit(best, p);
+        if (r < 0.35) { alphas.push(a); pts.push(p[6], p[7]); } else left.push(p);
+      }
+      if (alphas.length < 30 || alphas.length < samp.length * (pass ? 0.15 : 0.25)) break;
+      alphas.sort((a, b) => a - b);
+      layers.push({ c: best, aLo: alphas[Math.floor(alphas.length * 0.05)] * 0.7, aHi: Math.min(1.1, alphas[Math.floor(alphas.length * 0.95)] * 1.3) });
+      rest = left;
+    }
+    if (layers.length) {
+      model = { layers };
+      // which way the watermark runs (principal axis of its pixels)
+      const k = pts.length / 2;
+      let mx = 0, my = 0; for (let j = 0; j < pts.length; j += 2) { mx += pts[j]; my += pts[j + 1]; }
+      mx /= k; my /= k;
+      let sxx = 0, syy = 0, sxy = 0;
+      for (let j = 0; j < pts.length; j += 2) { const dx = pts[j] - mx, dy = pts[j + 1] - my; sxx += dx * dx; syy += dy * dy; sxy += dx * dy; }
+      const th = 0.5 * Math.atan2(2 * sxy, sxx - syy), ux = Math.cos(th), uy = Math.sin(th);
+      let u0 = 1e9, u1 = -1e9, v0 = 1e9, v1 = -1e9;
+      for (let j = 0; j < pts.length; j += 2) {
+        const dx = pts[j] - mx, dy = pts[j + 1] - my, u = dx * ux + dy * uy, v = -dx * uy + dy * ux;
+        if (u < u0) u0 = u; if (u > u1) u1 = u; if (v < v0) v0 = v; if (v > v1) v1 = v;
+      }
+      textH = Math.max(6, v1 - v0 + 1);
+      const along = u1 - u0 + 1, mg = textH * 0.35 + base;
+      model.band = { mx, my, ux, uy, v0: v0 - mg, v1: v1 + mg, u0: u0 - mg, u1: u1 + mg, line: along >= textH * 1.5 };
+    }
+  }
+  // stays near the line of text: free along it, only a little across it
+  const inBand = i => {
+    if (!model) return true;
+    const b = model.band, dx = i % qw - b.mx, dy = ((i / qw) | 0) - b.my;
+    const u = dx * b.ux + dy * b.uy, v = -dx * b.uy + dy * b.ux;
+    return b.line ? v >= b.v0 && v <= b.v1 : u >= b.u0 - textH && u <= b.u1 + textH && v >= b.v0 - textH && v <= b.v1 + textH;
+  };
+  const GAP = Math.max(4, Math.min(48, Math.round(textH * 0.45)));
+  const R = model ? Math.min(Rmax, Math.max(24, Math.round(textH * 6) + 16)) : Math.min(Rmax, Math.max(16, Math.round(half * 1.5) + 8));
+  const BG = Math.max(12, Math.round(R * 0.5));
+
+  // ---- colours: common inside the selection, rare around it ----
+  const bin = i => ((px[i * 4] >> 4) << 8) | ((px[i * 4 + 1] >> 4) << 4) | (px[i * 4 + 2] >> 4);
+  const hin = new Float32Array(4096); let hbg = new Float32Array(4096), nin = 0, nbg = 0;
+  for (let i = 0; i < n; i++) {
+    if (seed[i]) { hin[bin(i)]++; nin++; }
+    else if (dout[i] > 2 && dout[i] <= R + BG) { hbg[bin(i)]++; nbg++; }
+  }
+  for (let ax = 0; ax < 3; ax++) { // 3×3×3 box sum on the background side only
+    const st = [256, 16, 1][ax], o = new Float32Array(4096);
+    for (let k = 0; k < 4096; k++) {
+      const c = (k / st | 0) % 16;
+      o[k] = hbg[k] + (c > 0 ? hbg[k - st] : 0) + (c < 15 ? hbg[k + st] : 0);
+    }
+    hbg = o;
+  }
+  const colLike = new Uint8Array(4096);
+  if (nin > 0 && nbg > 0) for (let k = 0; k < 4096; k++) {
+    const a = hin[k] / nin, b = hbg[k] / nbg;
+    if (a > 0.004 && a > b * 4) colLike[k] = 1;
+  }
+
+  const likeCache = new Int8Array(n).fill(-1);
+  const like = i => {
+    if (likeCache[i] >= 0) return likeCache[i];
+    let r = colLike[bin(i)];
+    if (model) { // must also stand out from its own background
+      const dv = devOf(i);
+      if (r && dv <= thr * 0.6) r = 0;
+      if (!r && dv > thr) {
+        const o = i * 4, p = [px[o], px[o + 1], px[o + 2], B[0], B[1], B[2]];
+        for (const L of model.layers) {
+          const [a, res] = fit(L.c, p);
+          if (a >= L.aLo && a <= L.aHi && res < 0.35) { r = 1; break; }
+        }
+      }
+    }
+    return (likeCache[i] = r);
+  };
+
+  // ---- grow from the selection through watermark-like pixels, crossing gaps ----
+  const grown = seed.slice();
+  const budget = new Int16Array(n).fill(-1);
+  const stack = [];
+  for (let i = 0; i < n; i++) if (seed[i]) {
+    budget[i] = GAP;
+    const x = i % qw;
+    if ((x > 0 && !seed[i - 1]) || (x < qw - 1 && !seed[i + 1]) || (i >= qw && !seed[i - qw]) || (i + qw < n && !seed[i + qw])) stack.push(i);
+  }
+  while (stack.length) {
+    const i = stack.pop(), x = i % qw, b = budget[i];
+    const nb = [x > 0 ? i - 1 : -1, x < qw - 1 ? i + 1 : -1, i - qw, i + qw,
+                x > 0 ? i - qw - 1 : -1, x < qw - 1 ? i - qw + 1 : -1, x > 0 ? i + qw - 1 : -1, x < qw - 1 ? i + qw + 1 : -1];
+    for (const j of nb) {
+      if (j < 0 || j >= n || seed[j] || dout[j] > R || !inBand(j)) continue;
+      const nbud = like(j) ? GAP : b - 1;
+      if (nbud <= budget[j]) continue;
+      budget[j] = nbud;
+      if (nbud === GAP) grown[j] = 1;
+      if (nbud > 0) stack.push(j);
+    }
+  }
+
+  // ---- drop specks (texture that happened to look similar) ----
+  const extra = new Uint8Array(n);
+  for (let i = 0; i < n; i++) extra[i] = grown[i] && !seed[i] ? 1 : 0;
+  // pieces touching the selection are kept; detached ones must be letter-sized
+  const minTouch = 6, minFree = Math.max(24, Math.round((textH * 0.22) ** 2));
+  const lab = new Int32Array(n).fill(-1);
+  for (let s0 = 0; s0 < n; s0++) {
+    if (!extra[s0] || lab[s0] >= 0) continue;
+    const comp = [s0]; lab[s0] = s0;
+    let touch = false;
+    for (let k = 0; k < comp.length; k++) {
+      const i = comp[k], x = i % qw;
+      for (const j of [x > 0 ? i - 1 : -1, x < qw - 1 ? i + 1 : -1, i - qw, i + qw,
+                       x > 0 ? i - qw - 1 : -1, x < qw - 1 ? i - qw + 1 : -1, x > 0 ? i + qw - 1 : -1, x < qw - 1 ? i + qw + 1 : -1]) {
+        if (j < 0 || j >= n) continue;
+        if (seed[j]) touch = true;
+        else if (extra[j] && lab[j] < 0) { lab[j] = s0; comp.push(j); }
+      }
+    }
+    if (comp.length < (touch ? minTouch : minFree)) for (const i of comp) { extra[i] = 0; grown[i] = 0; }
+  }
+
+  // ---- widen; found parts a bit more, to take their shadow/glow too ----
+  const halo = Math.max(base + 2, Math.min(16, Math.round(big / 110), Math.round(textH * 0.3) + base));
+  const dfin = chamferDist(grown, qw, qh), dext = chamferDist(extra, qw, qh);
+  const mask = new Uint8Array(W * H);
+  let rx0 = W, ry0 = H, rx1 = -1, ry1 = -1;
+  for (let y = 0; y < qh; y++) for (let x = 0; x < qw; x++) {
+    const i = y * qw + x;
+    if (dfin[i] <= base + 0.01 || dext[i] <= halo + 0.01) {
+      const gx = x + qx0, gy = y + qy0;
+      mask[gy * W + gx] = 1;
+      if (gx < rx0) rx0 = gx; if (gx > rx1) rx1 = gx; if (gy < ry0) ry0 = gy; if (gy > ry1) ry1 = gy;
+    }
+  }
+  return { mask, rx0, ry0, rx1, ry1, info: { textH, GAP, R, thr, model } };
+}
+
+async function applyAI(bb) {
+  $('#busyTitle').textContent = 'AIが背景を描き直しています…';
+  // ---- full-resolution mask (with expansion) ----
+  const { mask, rx0, ry0, rx1, ry1 } = autoMask(bb);
+
+  let groups = findGroups(mask, rx0, ry0, rx1, ry1);
+  if (groups.length > 6) groups = [{ x0: rx0, y0: ry0, x1: rx1, y1: ry1 }];
+  const crops = groups.map(g => {
+    const M = Math.round(Math.max(g.x1 - g.x0 + 1, g.y1 - g.y0 + 1) * 0.75) + 192;
+    const cx0 = Math.max(0, g.x0 - M), cy0 = Math.max(0, g.y0 - M);
+    const cx1 = Math.min(W - 1, g.x1 + M), cy1 = Math.min(H - 1, g.y1 + M);
+    return { g, cx0, cy0, cw: cx1 - cx0 + 1, ch: cy1 - cy0 + 1 };
+  });
+  const ux0 = Math.min(...crops.map(c => c.cx0)), uy0 = Math.min(...crops.map(c => c.cy0));
+  const ux1 = Math.max(...crops.map(c => c.cx0 + c.cw)), uy1 = Math.max(...crops.map(c => c.cy0 + c.ch));
+  const beforeAll = imgCtx.getImageData(ux0, uy0, ux1 - ux0, uy1 - uy0);
+
+  const usedNames = new Set();
+  for (let k = 0; k < crops.length; k++) {
+    const label = crops.length > 1 ? `範囲 ${k + 1}/${crops.length} ・ ` : '';
+    const onp = (p, msg) => busyProgress((k + p) / crops.length, label + msg);
+    usedNames.add(await eraseCrop(crops[k], mask, onp));
+  }
+  const afterAll = imgCtx.getImageData(ux0, uy0, ux1 - ux0, uy1 - uy0);
+  pushUndo(ux0, uy0, beforeAll, afterAll);
+  return [...usedNames].join(' / ');
+}
+
+async function eraseCrop(crop, mask, onp) {
+  const { g, cx0, cy0, cw, ch } = crop;
+
+  // hole inside this crop (only this group's pixels)
+  const hole = new Uint8Array(cw * ch);
+  let hx0 = cw, hy0 = ch, hx1 = -1, hy1 = -1;
+  for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+    const gx = x + cx0, gy = y + cy0;
+    if (gx >= g.x0 && gx <= g.x1 && gy >= g.y0 && gy <= g.y1 && mask[gy * W + gx]) {
+      hole[y * cw + x] = 1;
+      if (x < hx0) hx0 = x; if (x > hx1) hx1 = x; if (y < hy0) hy0 = y; if (y > hy1) hy1 = y;
+    }
+  }
+  const [mFull, mfctx] = make2d(cw, ch);
+  const md = mfctx.createImageData(cw, ch);
+  for (let i = 0; i < cw * ch; i++) if (hole[i]) { const o = i * 4; md.data[o] = md.data[o + 1] = md.data[o + 2] = 255; md.data[o + 3] = 255; }
+  mfctx.putImageData(md, 0, 0);
+
+  // image + mask canvases at the size a model accepts
+  const prepared = {};
+  const prepare = (maxSide) => {
+    if (prepared[maxSide]) return prepared[maxSide];
+    const s = Math.min(1, maxSide / Math.max(cw, ch));
+    const sw = Math.max(1, Math.round(cw * s)), sh = Math.max(1, Math.round(ch * s));
+    const [img, ictx] = make2d(sw, sh);
+    ictx.imageSmoothingQuality = 'high';
+    ictx.drawImage(imgCanvas, cx0, cy0, cw, ch, 0, 0, sw, sh);
+    const [mk, mctx] = make2d(sw, sh);
+    mctx.drawImage(mFull, 0, 0, sw, sh);
+    const ma = mctx.getImageData(0, 0, sw, sh);
+    for (let i = 0; i < ma.data.length; i += 4) {
+      const on = ma.data[i + 3] > 0 ? 255 : 0;
+      ma.data[i] = ma.data[i + 1] = ma.data[i + 2] = on; ma.data[i + 3] = on;
+    }
+    mctx.putImageData(ma, 0, 0);
+    const box = {
+      x0: Math.max(0, Math.floor(hx0 * s)), y0: Math.max(0, Math.floor(hy0 * s)),
+      x1: Math.min(sw - 1, Math.ceil(hx1 * s)), y1: Math.min(sh - 1, Math.ceil(hy1 * s))
+    };
+    return (prepared[maxSide] = { img, mask: mk, box });
+  };
+
+  // one retry if the service is busy
+  const m = MODEL, used = m.name;
+  let result = null, firstErr = null;
+  for (let attempt = 0; attempt < 2 && !result; attempt++) {
+    try {
+      if (attempt) { onp(0.1, '混雑しているため、もう一度試しています'); await new Promise(r => setTimeout(r, 3000)); }
+      const p = prepare(m.maxSide);
+      result = await m.run(p.img, p.mask, p.box, onp);
+    } catch (e) {
+      console.warn(m.name + ' failed:', e);
+      if (!firstErr) firstErr = e;
+    }
+  }
+  if (!result) throw firstErr;
+
+  // result → crop size
+  const [resCv, rctx] = make2d(cw, ch);
+  rctx.imageSmoothingQuality = 'high';
+  rctx.drawImage(result, 0, 0, cw, ch);
+  const out = rctx.getImageData(0, 0, cw, ch).data;
+  const before = imgCtx.getImageData(cx0, cy0, cw, ch);
+  onp(0.92, '境目をなじませています');
+  const outF = new Float32Array(cw * ch * 3);
+  for (let i = 0, j = 0; i < out.length; i += 4, j += 3) { outF[j] = out[i]; outF[j + 1] = out[i + 1]; outF[j + 2] = out[i + 2]; }
+  const corr = harmonicCorrect(before.data, outF, hole, cw, ch);
+  const res = before.data;
+  for (let i = 0; i < cw * ch; i++) if (hole[i]) {
+    const o = i * 4, j = i * 3;
+    res[o] = outF[j] + corr[j]; res[o + 1] = outF[j + 1] + corr[j + 1]; res[o + 2] = outF[j + 2] + corr[j + 2];
+  }
+  imgCtx.putImageData(before, cx0, cy0);
+  requestRender();
+  onp(1, '');
+  return used;
+}
+
+$('#applyBtn').addEventListener('click', apply);
+$('#clearBtn').addEventListener('click', clearMask);
+
+function undo() {
+  if (busy || !undoStack.length) return;
+  const s = undoStack.pop(); imgCtx.putImageData(s.before, s.x, s.y); redoStack.push(s);
+  updateUI(); requestRender();
+}
+function redo() {
+  if (busy || !redoStack.length) return;
+  const s = redoStack.pop(); imgCtx.putImageData(s.after, s.x, s.y); undoStack.push(s);
+  updateUI(); requestRender();
+}
+
+function download() {
+  if (!imgCanvas || busy) return;
+  imgCanvas.toBlob(b => {
+    if (!b) { toast('保存に失敗しました'); return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = fileBase + '_clean.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    toast('PNGを保存しました');
+  }, 'image/png');
+}
+$('#downloadBtn').addEventListener('click', download);
+
+$('#zoomIn').addEventListener('click', () => imgCanvas && zoomBy(1.25));
+$('#zoomOut').addEventListener('click', () => imgCanvas && zoomBy(0.8));
+$('#fitBtn').addEventListener('click', fit);
+
+/* ---------- keyboard ---------- */
+window.addEventListener('keydown', e => {
+  if (e.target instanceof HTMLSelectElement) return;
+  const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
+  if (mod && k === 'o') { e.preventDefault(); $('#fileInput').click(); return; }
+  if (!imgCanvas) return;
+  if (mod && k === 's') { e.preventDefault(); download(); return; }
+  if (mod && k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+  if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return; }
+  if (mod) return;
+  if (e.key === ' ') { e.preventDefault(); if (!spaceDown) { spaceDown = true; updateCursor(); requestRender(); } return; }
+  if (e.key === 'Enter') { e.preventDefault(); apply(); return; }
+  if (e.key === 'Escape') { drag = null; clearMask(); return; }
+  const map = { r: 'rect', b: 'brush', e: 'eraser', h: 'hand' };
+  if (map[k]) { setTool(map[k]); return; }
+  if (k === '0') fit();
+  if (k === '+' || k === '=') zoomBy(1.25);
+  if (k === '-') zoomBy(0.8);
+  if (k === '[' || k === ']') {
+    brushSize = Math.max(4, Math.min(200, Math.round(brushSize * (k === ']' ? 1.2 : 1 / 1.2))));
+    $('#brushSize').value = brushSize; $('#brushOut').textContent = brushSize; requestRender();
+  }
+});
+window.addEventListener('keyup', e => {
+  if (e.key === ' ') { spaceDown = false; updateCursor(); requestRender(); }
+});
+window.addEventListener('blur', () => { spaceDown = false; updateCursor(); });
+
+updateUI(); updateStatus();
+</script>
+</body>
+</html>
